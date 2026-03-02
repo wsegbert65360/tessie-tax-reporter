@@ -1,0 +1,2 @@
+2026-03-02 11:42:56,148 - ERROR - Error in TaxReporter.run: name 'pdf_file' is not defined
+2026-03-02 11:42:56,150 - ERROR - Reporter thread error: name 'pdf_file' is not defined

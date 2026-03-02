@@ -448,11 +448,16 @@ class TaxReporter:
             
             tax_file = f"tax_report_{vin}.csv"
             pd.DataFrame(tax_rows).to_csv(tax_file, index=False)
-
-            # --- AUDIT TIE-OUT ---
+            
+            # --- PDF EXPORT ---
+            pdf_file = f"tax_report_{vin}.pdf"
             if processed_drives:
                 start_odo = processed_drives[0]['Odometer Start']
                 end_odo = processed_drives[-1]['Odometer End']
+                self.export_to_pdf(pdf_file, vin, processed_drives, outings, total_biz, total_pers, start_odo, end_odo)
+
+            # --- AUDIT TIE-OUT ---
+            if processed_drives:
                 total_period_miles = round(end_odo - start_odo, 1) if end_odo > start_odo else 0
                 
                 with open(tax_file, "a", newline='', encoding="utf-8") as f:
