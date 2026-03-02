@@ -1,0 +1,390 @@
+GOAL:
+Classify trips as Business, Personal, or Drop.
+Favor aggressive but defendable farm classification.
+Never classify personal-only outings as Business.
+
+--------------------------------
+POI TYPES
+--------------------------------
+F = Farm / Farm Vendor / Farm Admin
+P = Personal
+U = Unknown
+HQ = Farm HQ (F)
+
+--------------------------------
+CORE RULES (ORDER MATTERS)
+--------------------------------
+
+1️⃣ DROP
+IF miles == 0 → Drop
+IF from == HQ AND to == HQ AND miles < 0.5 → Drop
+
+--------------------------------
+
+2️⃣ PERSONAL HARD
+IF outing has NO F → Personal
+
+IF notes contain:
+"no farm"
+"personal only"
+"solely personal"
+"only personal pois"
+→ Personal
+
+IF P → P → Personal
+IF U → U → Personal
+IF outing ONLY P or U → Personal
+
+--------------------------------
+
+3️⃣ BUSINESS CORE
+IF F → F → Business
+IF HQ → F → Business
+IF F → HQ → Business
+
+IF outing = HQ + F vendors/admin ONLY → Business (purpose required)
+
+--------------------------------
+
+4️⃣ PERSONAL → FARM
+IF P → F:
+IF outing has farm purpose AND segment has farm purpose → Business
+ELSE → Personal
+
+--------------------------------
+
+5️⃣ PERSONAL → HQ
+IF P → HQ:
+IF outing has F stop
+AND farm purpose exists earlier
+AND segment is return leg
+→ Business
+ELSE → Personal
+
+--------------------------------
+
+6️⃣ INCIDENTAL PERSONAL STOPS
+Allowed ONLY IF:
+outing has F stop
+AND outing has farm purpose
+AND stop = food OR fuel
+AND stop occurs inside outing (not first or last)
+
+→ Business + Incidental Flag
+ELSE → Personal
+
+--------------------------------
+
+PURPOSE RULES
+--------------------------------
+Business must have short farm purpose (3-7 words)
+
+GOOD:
+Check bins
+Check cattle water
+Pick up parts
+Hydraulic repair
+FSA paperwork
+Seed pickup
+
+BAD:
+Support operations
+Business travel
+General work
+
+--------------------------------
+
+OUTING RULE
+--------------------------------
+Outing = drives grouped if gap ≤ 4 hours
+
+outing_has_F = any F stop
+outing_has_purpose = any valid Business purpose
+
+--------------------------------
+
+NEVER DO
+--------------------------------
+❌ Personal only outing → Business
+❌ Food stop alone → Business
+❌ Distance based business logic
+❌ 0 mile Business trips
+❌ “Return home = Business”
+
+--------------------------------
+DEFAULT PURPOSE
+--------------------------------
+F→Bins → Check bins
+F→Cattle → Check cattle
+F→Vendor → Pick up parts
+F→FSA → FSA paperwork
+
+--------------------------------
+POI LIST (ADDRESS DEFINED ONCE)
+F | AutoZone | 1014 E Ohio St, Clinton MO 64735
+F | bank | 504 West Benton Street, Windsor, Missouri 65360, United States
+F | Benton County Northwest 1101 | Benton County Northwest 1101, Windsor, Missouri 65360, United States
+F | Bins | 1226 Northeast 750 Road, Windsor, Missouri 65360, United States
+F | Bins | 1294 Northeast 750 Road, Windsor, Missouri 65360, United States
+F | Bomgaars | 2414 South Limit Avenue, Sedalia, Missouri 65301, United States
+F | Bottom field | 1106 Northeast 900 Road, Windsor, Missouri 65360, United States
+F | Bottom field | Northeast 900 Road, Windsor, Missouri 65360, United States
+F | Boys care care | 507 North Main Street, Windsor, Missouri 65360, United States
+F | Boyz car care | 509 North Main Street, Windsor, Missouri 65360, United States
+F | Case Tractor | 22089 Front Street, La Monte, Missouri 65337, United States
+F | Case Tractor | 22089 US Route 50, La Monte, Missouri 65337, United States
+F | Clinton License Office | 704 E Ohio St, Clinton MO 64735
+F | Cook Tractor | 1761 Gerhart Drive, Clinton, Missouri 64735, United States
+F | Do It Best Hardware | 501 W Benton St, Windsor MO 65360
+F | Family Center Farm | 1500 South Limit Avenue, Sedalia, Missouri 65301, United States
+F | Family Farm & Home | 1601 S Limit Ave, Sedalia MO 65301
+F | Farm Barn | Northeast 1071 Road, Windsor, Missouri 65360, United States
+F | Farm Barn | Northeast 800 Road, Windsor, Missouri 65360, United States
+F | Farm Check | MO Oo, Windsor MO 65360
+F | Farm Field | Benton County Northwest 900, Windsor, Missouri 65360, United States
+F | Farm Field | Mo Y, Windsor, Missouri 65360, United States
+F | Farm Field | 1171 Northeast 800 Road, Windsor, Missouri 65360, United States
+F | Farm Field | Benton County Northwest 901, Windsor, Missouri 65338, United States
+F | Farm Field | 1128 Northeast 900 Road, Windsor, Missouri 65360, United States
+F | Farm field | 11343 NE Highway Oo, Windsor, Missouri 65360, United States
+F | Farm field | 10931 NE Highway Oo, Windsor, Missouri 65360, United States
+F | farm Field | 1151 Northeast 800 Road, Windsor, Missouri 65360, United States
+F | Farm HQ | 11713 Northeast Highway Oo, Windsor, Missouri 65360, United States
+F | Farmers Coop | Bruce Street, Windsor, Missouri 65360, United States
+F | FSA | 425 Pawnee Avenue, Clinton, Missouri 64735, United States
+F | FSA Building | 1312 N 2nd St, Clinton MO 64735
+F | Golden Valley Tractor | 2172 Missouri Highway 7, Clinton, Missouri 64735, United States
+F | Harbor Freight | 901 South Warren Avenue, Sedalia, Missouri 65301, United States
+F | Hay Pile | 1060 Northeast 900 Road, Windsor, Missouri 65360, United States
+F | henry County Courthouse | 113 West Franklin Street, Clinton, Missouri 64735, United States
+F | HQ | 11713 NE Highway Oo, Windsor MO 65360
+F | Jims Tire | 5245 South Limit Avenue, Sedalia, Missouri 65301, United States
+F | Key Hydraulic | 4575 South Limit Avenue, Sedalia, Missouri 65301, United States
+F | L and M supply | 107 South 2nd Street, Clinton, Missouri 64735, United States
+F | Lowes home Improvement | 914 North Simpson Drive, Warrensburg, Missouri 64093, United States
+F | Mankini repair | 110 South Commercial Street, Windsor, Missouri 65360, United States
+F | Mankini repair | 200 South Commercial Street, Windsor, Missouri 65360, United States
+F | McCartney Farm | 1065 NE 800 Rd, Windsor MO 65360
+F | Menards | 4400 Wisconsin Dr, Sedalia, Missouri 65301, United States
+F | Miller Seed | 503 N 5th St, Clinton MO 64735
+F | Napa Parts | 903 N Main St, Windsor MO 65360
+F | oreilly auto parts | 1722 East Ohio Street, Clinton, Missouri 64735, United States
+F | Ricks tire | 211 East Benton Street, Windsor, Missouri 65360, United States
+F | Ricks tire | 103 East Florence Street, Windsor, Missouri 65360, United States
+F | State Farm | 109 South Main Street, Windsor, Missouri 65360, United States
+F | Timber field | 15308 Egbert Ave, Windsor, Missouri 65360, United States
+F | Tractor Supply | 4125 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+F | Twyman | Mo P, Windsor, Missouri 65360, United States
+F | Twyman | Mo E, Windsor, Missouri 65360, United States
+F | Twyman Farm | Benton Co NW 901, Windsor MO 65338
+F | USDA Service Center | 112 W Rives Rd, Clinton MO 64735
+F | Used Tractor shopping | 60 Kansas Avenue, Kansas City, Kansas 66105, United States
+F | vet | 213 West Jefferson Street, Clinton, Missouri 64735, United States
+F | Westlake Hardware | 1806 East Ohio Street, Clinton, Missouri 64735, United States
+F | Westlake Hardware | 1520 East Ohio Street, Clinton, Missouri 64735, United States
+F | Westlake hardware | 3100 West 10th Street, Sedalia, Missouri 65301, United States
+F | Westlake hardware | 1712 East Ohio Street, Clinton, Missouri 64735, United States
+F | westlake hardware | 3110 West 10th Street, Sedalia, Missouri 65301, United States
+F | Westlakes Hardware | 1714 E Ohio St, Clinton MO 64735
+F | Farmers Coop | 500 West Jackson Street, Windsor, Missouri 65360, United States
+F | Windsor Hardware | 500 West Benton Street, Windsor, Missouri 65360, United States
+F | Windsor Hardware | 216 West Benton Street, Windsor, Missouri 65360, United States
+F | Work Barn | 1097 Northeast 800 Road, Windsor, Missouri 65360, United States
+F | Work Barn | 893 Northeast 1071 Road, Windsor, Missouri 65360, United States
+
+--------------------------------
+
+P | 1911 West Broadway Boulevard, Sedalia | 1911 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | 329 North Main Street, Windsor, Missouri | Leroy Vandyke Avenue, Sedalia, Missouri 65301, United States
+P | 502 South Main Street | 500 West Florence Street, Windsor, Missouri 65360, United States
+P | Arbys | 514 Pawnee Avenue, Clinton, Missouri 64735, United States
+P | Bandanas | 2909 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | Brothers | 502 South Main Street, Windsor, Missouri 65360, United States
+P | Brothers | 200 South Main Street, Windsor, Missouri 65360, United States
+P | Camping | 12733 Long Shoal Park Road, Warsaw, Missouri 65355, United States
+P | Car Wash Windsor | 403 W Benton St, Windsor MO 65360
+P | Caseys | 201 North Main Street, Green Ridge, Missouri 65332, United States
+P | Church | 205 West Benton Street, Windsor, Missouri 65360, United States
+P | church | 200 West Benton Street, Windsor, Missouri 65360, United States
+P | Church | 211 West Benton Street, Windsor, Missouri 65360, United States
+P | Clinton Hospital | 1600 N 2nd St, Clinton MO 64735
+P | Clints Restraunt | 107 South Olive Street, Calhoun, Missouri 65323, United States
+P | Dairy Queen | 500 South Main Street, Windsor, Missouri 65360, United States
+P | Dentist | 1110 East Ohio Street, Clinton, Missouri 64735, United States
+P | Dollar Store Windsor | 806 S Main St, Windsor MO 65360
+P | Estes Drive in | 535 N 65 Hwy, Lincoln, Missouri 65338, United States
+P | funeral | 2101 North Commercial Street, Harrisonville, Missouri 64701, United States
+P | gas | 200 West Main Street, Calhoun, Missouri 65323, United States
+P | Gas Station | 404 North High Street, Calhoun, Missouri 65323, United States
+P | Grandma | 422 North Scott Avenue, Belton, Missouri 64012, United States
+P | Grocery store | 106 West Washington Street, Windsor, Missouri 65360, United States
+P | Katy Trail | Katy Trail, Windsor, Missouri 65233, United States
+P | Katy Trail Calhoun | Katy Trail, Calhoun MO 65233
+P | Lincoln Restraurant | 345 N 65 Hwy, Lincoln, Missouri 65338, United States
+P | Mazzios Pizza | 1613 S Limit Ave, Sedalia MO 65301
+P | Mexican | 305 South Main Street, Windsor, Missouri 65360, United States
+P | Mexican | 417 Kansas Avenue, Clinton, Missouri 64735, United States
+P | Mexican Restaurant Sedalia | 1400 S Limit Ave, Sedalia MO 65301
+P | Mo Ww | Mo Ww, Windsor, Missouri 65360, United States
+P | Movie | 431 Missouri Avenue, Clinton, Missouri 64735, United States
+F | Terry Tractor Repair | 1141 Northeast 300 Road, Calhoun, Missouri 65323, United States
+P | New China | 122 South Main Street, Windsor, Missouri 65360, United States
+P | Park | 116 South County Line Road, Windsor, Missouri 65360, United States
+P | Personal stop | 4404 South Limit Avenue, Sedalia, Missouri 65301, United States
+P | Pizza Glen | 1131 North 3rd Street, Clinton, Missouri 64735, United States
+P | Restaurant Lincoln | 105 Airport Rd, Lincoln MO 65338
+P | Restraunt | 509 US Route 65, Lincoln, Missouri 65338, United States
+P | restraunt | 151 East 2nd Street, Kansas City, Missouri 64163, United States
+P | restraunt | 1217 Walnut Street, Kansas City, Missouri 64106, United States
+P | Ryan Rhoads | 113 Highland Street, Windsor, Missouri 65360, United States
+P | School | 402 South Main Street, Windsor, Missouri 65360, United States
+P | School | 400 South Main Street, Windsor, Missouri 65360, United States
+P | Side track | 800 West Benton Street, Windsor, Missouri 65360, United States
+P | sidetrack | 206 North Chisman Street, Windsor, Missouri 65360, United States
+P | Smiths | 1709 East Ohio Street, Clinton, Missouri 64735, United States
+P | Sonic | 329 North Main Street, Windsor, Missouri 65360, United States
+P | State Capitol | State Capitol, Little Rock, Arkansas 72201, United States
+P | Steak House | 710 South State Fair Boulevard, Sedalia, Missouri 65301, United States
+P | Steak House | 1716 West 9th Street, Sedalia, Missouri 65301, United States
+P | Steak House | 2401 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | Tesla Car Charger | 1303 East North Avenue, Belton, Missouri 64012, United States
+P | Tesla Charger | 806 Winchester Road, Sedalia, Missouri 65301, United States
+P | Tesla Charger | 1303 East Ohio Street, Clinton, Missouri 64735, United States
+P | Tesla Super Charger | 1212 East North Avenue, Belton, Missouri 64034, United States
+P | Walmart | 3201 W Broadway Blvd, Sedalia MO 65301
+P | Walmart | 301 Cooper Boulevard, Warrensburg, Missouri 64093, United States
+P | Wendys | 1721 East Ohio Street, Clinton, Missouri 64735, United States
+P | Windsor Hardware | 32 SE Highway Aa, Clinton, Missouri 64735, United States
+
+P | N/A | 4101 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 908 East Ohio Street, Clinton, Missouri 64735, United States
+P | Pawnee Avenue Residence | 412 Louise Avenue, Clinton, Missouri 64735, United States
+P | house | 413 Louise Avenue, Clinton, Missouri 64735, United States
+P | N/A | 105 Phelps Street, Windsor, Missouri 65360, United States
+P | N/A | 307 East Benton Street, Windsor, Missouri 65360, United States
+P | N/A | 103 Wallace Avenue, Windsor, Missouri 65360, United States
+P | N/A | 3200 Missouri Highway 291, Harrisonville, Missouri 64701, United States
+P | N/A | 217 Missouri Highway 7, Clinton, Missouri 64735, United States
+P | N/A | 1705 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | Benton County Northwest 1301, Windsor, Missouri 65360, United States
+P | Home | Benton County Northwest 1301, Windsor, Missouri 65360, United States
+P | None | 334 Southeast 901st Road, Clinton, Missouri 64735, United States
+P | N/A | 12297 Warner Ave, Windsor, Missouri 65360, United States
+P | N/A | 12297 Warner Ave, Windsor, Missouri 65360, United States
+P | N/A | 12297 Warner Ave, Windsor, Missouri 65360, United States
+P | N/A | 603 East Benton Street, Windsor, Missouri 65360, United States
+P | N/A | 1501 North 2nd Street, Clinton, Missouri 64735, United States
+P | N/A | 108 North Washington Street, Clinton, Missouri 64735, United States
+P | N/A | 305 South Tebo Street, Windsor, Missouri 65360, United States
+P | N/A | Main Street, Sedalia, Missouri 65301, United States
+P | N/A | 908 Applewood Lane, Belton, Missouri 64012, United States
+P | N/A | 12200 Northwest Prairie View Road, Kansas City, Missouri 64151, United States
+P | N/A | 908 Applewood Lane, Belton, Missouri 64012, United States
+P | N/A | 1424 East North Avenue, Belton, Missouri 64012, United States
+P | N/A | 3101 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | 329 North Main Street | 400 North Main Street, Windsor, Missouri 65360, United States
+P | N/A | 400 North Main Street, Windsor, Missouri 65360, United States
+P | Personal stop | 423 Pawnee Avenue, Clinton, Missouri 64735, United States
+P | N/A | 1607 North 2nd Street, Clinton, Missouri 64735, United States
+P | N/A | 200 West Pine Street, Warrensburg, Missouri 64093, United States
+P | N/A | 3080 North Kentwood Avenue, Springfield, Missouri 65803, United States
+P | N/A | 3080 North Kentwood Avenue, Springfield, Missouri 65803, United States
+P | N/A | US 65b, Clinton, Arkansas 72031, United States
+P | N/A | 975 South Amity Road, Conway, Arkansas 72032, United States
+P | N/A | 950 East Dave Ward Drive, Conway, Arkansas 72032, United States
+P | N/A | 1523 West 8th Street, Little Rock, Arkansas 72202, United States
+P | N/A | 2500 North Main Street, North Little Rock, Arkansas 72114, United States
+P | N/A | 2500 North Main Street, North Little Rock, Arkansas 72114, United States
+P | N/A | 701 Collins Street, Little Rock, Arkansas 72202, United States
+P | N/A | 75 Riverfront Drive, North Little Rock, Arkansas 72114, United States
+P | N/A | 3b Capitol Mall, Little Rock, Arkansas 72201, United States
+P | State Capitol | 2500 North Main Street, North Little Rock, Arkansas 72114, United States
+P | N/A | 950 East Dave Ward Drive, Conway, Arkansas 72032, United States
+P | N/A | 121 South Broadview Street, Greenbrier, Arkansas 72058, United States
+P | N/A | County Road 281, St. Joe, Arkansas 72675, United States
+P | N/A | North Mulroy Road, Strafford, Missouri 65757, United States
+P | N/A | 2152-2136 South 2nd Street, Clinton, Missouri 64735, United States
+P | N/A | 1010 East Ohio Street, Clinton, Missouri 64735, United States
+P | N/A | 4106 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 1705 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 3811 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 3171 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 908 Applewood Lane, Belton, Missouri 64012, United States
+P | N/A | 908 Applewood Lane, Belton, Missouri 64012, United States
+P | N/A | 1038 Northeast 800 Road, Windsor, Missouri 65360, United States
+P | N/A | 310 East Bodine Avenue, Clinton, Missouri 64735, United States
+P | N/A | 630 East Young Street, Warrensburg, Missouri 64093, United States
+P | N/A | 12060 Northwest Prairie View Road, Kansas City, Missouri 64153, United States
+P | N/A | 603 East Gaines Drive, Clinton, Missouri 64735, United States
+P | N/A | 1705 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 3811 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 1705 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 3811 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | N/A | 4211 West Country Club Drive, Sedalia, Missouri 65301, United States
+P | N/A | 400 North Main Street, Windsor, Missouri 65360, United States
+P | Brothers | 2917 West Broadway Boulevard, Sedalia, Missouri 65301, United States
+P | Brothers | 912 North College Street, Warrensburg, Missouri 64093, United States
+P | N/A | 729 Charles Street, Warrensburg, Missouri 64093, United States
+P | N/A | 209 East Main Street, Calhoun, Missouri 65323, United States
+P | N/A | 2043 Missouri Highway 52, Clinton, Missouri 64735, United States
+P | N/A | 547 Spirit Boulevard, Whiteman AFB, Missouri 65305, United States
+P | N/A | Bullard Manor, Whiteman AFB, Missouri 65305, United States
+P | ?? | Benton County Northwest 1301, Windsor, Missouri 65360, United States
+P | N/A | 115 North 2nd Street, Clinton, Missouri 64735, United States
+P | N/A | 101 South Main Street, Windsor, Missouri 65360, United States
+P | Brothers | 2501 West Ashley Road, Boonville, Missouri 65233, United States
+P | N/A | 8702 Rose Avenue, Brentwood, Missouri 63144, United States
+P | N/A | 1769 South Brentwood Boulevard, Brentwood, Missouri 63144, United States
+P | N/A | 1769 South Brentwood Boulevard, Brentwood, Missouri 63144, United States
+P | N/A | 7500 Sussex Avenue, Maplewood, Missouri 63143, United States
+P | N/A | 2603 The Hill Avenue, Marion, Illinois 62959, United States
+P | N/A | Lookout Loop, Goreville, Illinois 62939, United States
+P | N/A | Lookout Loop, Goreville, Illinois 62939, United States
+P | N/A | 1200 South Fly Avenue, Goreville, Illinois 62939, United States
+P | N/A | 156 Bleich Road, Paducah, Kentucky 42003, United States
+P | N/A | 815 East Reelfoot Avenue, Union City, Tennessee 38261, United States
+P | N/A | 1936 Carriage House Drive, Jackson, Tennessee 38305, United States
+P | N/A | 1936 Carriage House Drive, Jackson, Tennessee 38305, United States
+P | N/A | 1770 Hwy 45 by Pass, Jackson, Tennessee 38305, United States
+P | N/A | U.S. 45 Bypass, Jackson, Tennessee 38305, United States
+P | N/A | 105 Ayers Drive, Corinth, Mississippi 38834, United States
+P | N/A | 2048 Wheeler Highway, Tuscumbia, Alabama 35674, United States
+P | N/A | Bunyan Hill Road, Moulton, Alabama 35650, United States
+P | N/A | Northwest Road, Mount Hope, Alabama 35651, United States
+P | N/A | 14870 Andrew Jackson Highway, Russellville, Alabama 35654, United States
+P | N/A | 105 Ayers Drive, Corinth, Mississippi 38834, United States
+P | N/A | 1770 Hwy 45 by Pass, Jackson, Tennessee 38305, United States
+P | N/A | 1324 Vann Drive, Jackson, Tennessee 38305, United States
+P | N/A | 1324 Vann Drive, Jackson, Tennessee 38305, United States
+P | N/A | 34 Casey Jones Lane, Jackson, Tennessee 38305, United States
+P | N/A | 2823 East Malone Avenue, Miner, Missouri 63801, United States
+P | N/A | 2823 East Malone Avenue, Miner, Missouri 63801, United States
+P | N/A | 2823 East Malone Avenue, Miner, Missouri 63801, United States
+P | N/A | 2505 Veterans Memorial Drive, Cape Girardeau, Missouri 63701, United States
+P | N/A | 17041 North Outer 40, Chesterfield, Missouri 63005, United States
+P | N/A | 3405 Clark Lane, Columbia, Missouri 65202, United States
+P | N/A | 1004 South 2nd Street, Clinton, Missouri 64735, United States
+P | N/A | 803 North Main Street, Windsor, Missouri 65360, United States
+P | N/A | 803 North Main Street, Windsor, Missouri 65360, United States
+P | N/A | 15508 Crystal Springs Road, La Monte, Missouri 65337, United States
+P | N/A | 15508 Crystal Springs Road, La Monte, Missouri 65337, United States
+P | N/A | 109 Wall Street, Windsor, Missouri 65360, United States
+P | N/A | 1701 American Royal Court, Kansas City, Missouri 64102, United States
+P | N/A | 311 North Cedar Street, Belton, Missouri 64012, United States
+P | N/A | 2611 Brookhart Drive, Harrisonville, Missouri 64701, United States
+P | N/A | 821 Elm Street, Columbia, Missouri 65201, United States
+P | N/A | 851 Champions Drive, Columbia, Missouri 65211, United States
+P | N/A | 3120 West Broadway, Columbia, Missouri 65203, United States
+P | N/A | 2450 Main Street, Boonville, Missouri 65233, United States
+P | N/A | 715 East Ohio Street, Clinton, Missouri 64735, United States
+P | N/A | 715 East Ohio Street, Clinton, Missouri 64735, United States
+P | N/A | 1342 State Highway U, Bolivar, Missouri 65613, United States
+P | N/A | 330 East Commercial Street, Springfield, Missouri 65803, United States
+P | N/A | 483 Branson Landing Boulevard, Branson, Missouri 65616, United States
+P | N/A | 103 West Main Street, Branson, Missouri 65616, United States
+P | N/A | 214 West Main Street, Branson, Missouri 65616, United States
+P | N/A | 2801 Sunset Inn Road, Branson, Missouri 65616, United States
+P | N/A | 2801 Sunset Inn Road, Branson, Missouri 65616, United States
+P | N/A | 214 West Main Street, Branson, Missouri 65616, United States
+P | N/A | 1 Bass Pro Drive, Branson, Missouri 65616, United States
+P | N/A | 205 East Rives Road, Clinton, Missouri 64735, United States

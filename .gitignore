@@ -1,0 +1,19 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Application Data
+classification_cache.json
+*.csv
+!rules.txt
+!.env.example
+
+# IDEs
+.vscode/
+.idea/
