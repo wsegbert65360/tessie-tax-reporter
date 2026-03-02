@@ -12,6 +12,7 @@ import math
 from place_lookup import lookup_business_at_coords
 import logging
 from fpdf import FPDF
+from geo_utils import check_geofence
 
 # Configure logging
 logging.basicConfig(
@@ -381,11 +382,22 @@ class TaxReporter:
                     'Odometer End': round(d.get('ending_odometer', 0), 1),
                     'Miles': round(d.get('odometer_distance', 0), 2),
                     'Class': 'Personal', 'MissionCategory': 'Personal', 'Business purpose': '', 'Notes': '',
+                    'AuditReason': '',
                     'InferredName': inferred, 'Started At': d.get('started_at'), 'Ended At': d.get('ended_at')
                 })
                 location_counts[d.get('ending_location', 'Unknown')] += 1
 
             processed_drives.sort(key=lambda x: x['Started At'])
+
+            # --- GEOFENCE FIRST ---
+            for d in processed_drives:
+                geo_match = check_geofence(d['End Lat'], d['End Lon'])
+                if geo_match:
+                    d['Class'] = 'Business'
+                    d['MissionCategory'] = 'F'
+                    d['Business purpose'] = f"Farm Operation: {geo_match}"
+                    d['AuditReason'] = f"Auto-matched to known location: {geo_match}"
+                    d['Notes'] = f"Geofence: {geo_match}"
 
             if self.classifier:
                 batch_size = 10
@@ -410,7 +422,8 @@ class TaxReporter:
                             'MissionCategory': res.get('MissionCategory', 'Personal'),
                             'Business purpose': res.get('Business purpose', ''),
                             'InferredName': res.get('InferredName', ''),
-                            'Notes': res.get('Notes', '')
+                            'Notes': res.get('Notes', ''),
+                            'AuditReason': res.get('Reasoning', '')
                         })
                     
                     if self.progress_callback:
@@ -443,7 +456,16 @@ class TaxReporter:
                 if m_miles == 0: continue
                 if mission[0]['Class'] == 'Business':
                     total_biz += m_miles
-                    tax_rows.append({'Date': mission[0]['Date'], 'Mission': mission[0]['Business purpose'], 'Category': mission[0]['MissionCategory'], 'Miles': round(m_miles, 1), 'Start': mission[0]['Start Location'], 'End': mission[-1]['End Location'], 'Visited': ", ".join([get_poi_name(l['End Location'], self.rules_text, l.get('End Lat'), l.get('End Lon')) or l['End Location'] for l in mission])})
+                    tax_rows.append({
+                        'Date': mission[0]['Date'], 
+                        'Mission': mission[0]['Business purpose'], 
+                        'Category': mission[0]['MissionCategory'], 
+                        'Miles': round(m_miles, 1), 
+                        'Start': mission[0]['Start Location'], 
+                        'End': mission[-1]['End Location'], 
+                        'Visited': ", ".join([get_poi_name(l['End Location'], self.rules_text, l.get('End Lat'), l.get('End Lon')) or l['End Location'] for l in mission]),
+                        'Audit Trail': " | ".join(list(dict.fromkeys([l.get('AuditReason', '') for l in mission if l.get('AuditReason')])))
+                    })
                 else: total_pers += m_miles
             
             tax_file = f"tax_report_{vin}.csv"
@@ -523,26 +545,25 @@ class TaxReporter:
 
         # Missions Section
         pdf.set_font("helvetica", "B", 12)
-        pdf.cell(0, 10, "Business Missions Details", ln=True)
-        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(0, 10, "Business Missions Audit Trail", ln=True)
+        pdf.set_font("helvetica", "B", 9)
         
-        # Table Header
-        headers = ["Date", "Mission Purpose", "Miles", "Destinations"]
-        ws = [25, 60, 15, 90]
+        headers = ["Date", "Mission/Purpose", "Miles", "Audit Reasoning"]
+        ws = [22, 55, 13, 100]
         for i, h in enumerate(headers):
             pdf.cell(ws[i], 8, h, border=1)
         pdf.ln()
 
-        pdf.set_font("helvetica", "", 9)
+        pdf.set_font("helvetica", "", 8)
         for mission in outings:
             if mission[0]['Class'] == 'Business':
                 m_miles = sum(l['Miles'] for l in mission)
                 purpose = mission[0]['Business purpose'] or "Farm Business"
-                visited = ", ".join([get_poi_name(l['End Location'], self.rules_text, l.get('End Lat'), l.get('End Lon')) or l['End Location'] for l in mission])
+                reasoning = " | ".join(list(dict.fromkeys([l.get('AuditReason', '') for l in mission if l.get('AuditReason')])))
                 
                 pdf.cell(ws[0], 8, mission[0]['Date'], border=1)
                 pdf.cell(ws[1], 8, purpose[:35], border=1)
                 pdf.cell(ws[2], 8, str(round(m_miles, 1)), border=1)
-                pdf.multi_cell(ws[3], 8, visited[:150], border=1)
+                pdf.multi_cell(ws[3], 8, reasoning[:200], border=1)
         
         pdf.output(filename)

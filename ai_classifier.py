@@ -87,19 +87,12 @@ class DriveClassifier:
         3. "Business purpose": REQUIRED IF BUSINESS (3-7 words, Verb + Asset + Why). Use objective verbs: "Purchase", "Transport", "Inspect", "Verify".
         4. "InferredName": The specific business name.
         5. "Notes": Objective audit notes.
-
         AUDIT HARDENING:
         - Retail trips (Sonic, McDonalds, Dollar Store, Gas Stations) DEFAULT to Personal unless the pre-identified name or context strongly suggests a farm supply run (e.g. Orscheln, TSC).
         - HQ/Home returns are typically Personal unless the outbound leg was a mission and this completes the loop.
         - Distance matters: Short incidental stops during a larger farm mission can be Business.
 
-        Return a JSON object with a "results" key containing an object mapping the "ID" strings to their classification objects.
-        {{
-            "results": {{
-                "0": {{ "Class": "Business", "InferredName": "...", "MissionCategory": "...", "Business purpose": "...", "Notes": "..." }},
-                ...
-            }}
-        }}
+        Return a JSON array of objects, one for each drive in the batch, following the REPORTING FORMAT.
         """
 
         max_retries = 3
