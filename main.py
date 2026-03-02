@@ -333,17 +333,24 @@ class TaxReporter:
             vin = vehicle['vin']
             
             if not start_ts or not end_ts:
-                now = datetime.now()
-                if report_choice == '1':
-                    st = (now.replace(day=1) - timedelta(days=1)).replace(day=1)
-                    start_ts, end_ts = int(st.timestamp()), int(now.replace(day=1).timestamp())
-                elif report_choice == '2':
-                    start_ts = int(now.replace(month=1, day=1).timestamp())
-                elif report_choice == '5':
-                    start_ts = int((now - timedelta(days=7)).timestamp())
-                else:
+                now = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+                if report_choice == '1': # Last Month
+                    first_this = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    last_last = first_this - timedelta(days=1)
+                    first_last = last_last.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    start_ts, end_ts = int(first_last.timestamp()), int(first_this.timestamp())
+                elif report_choice == '2': # This Year
+                    start_ts = int(now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
+                    end_ts = int(now.timestamp())
+                elif report_choice == '3': # Last Year
+                    start_ts = int(datetime(now.year - 1, 1, 1, 0, 0, 0).timestamp())
+                    end_ts = int(datetime(now.year - 1, 12, 31, 23, 59, 59).timestamp())
+                elif report_choice == '5': # Last 7 Days
+                    end_ts = int(now.timestamp())
+                    start_ts = int((now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+                else: # All Time
                     start_ts = 0
-                if not end_ts: end_ts = int(now.timestamp())
+                    end_ts = int(now.timestamp())
 
             drives_data = self.client.get_drives(vin, start_date=start_ts, end_date=end_ts)
             if not drives_data: return "No drives."

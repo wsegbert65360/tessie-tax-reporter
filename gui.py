@@ -143,6 +143,8 @@ class TeslaTaxApp(ctk.CTk):
         self.radio_3.grid(row=6, column=0, padx=40, pady=5, sticky="w")
         self.radio_5 = ctk.CTkRadioButton(self.main_frame, text="Last 7 Days", variable=self.timeframe_var, value="5")
         self.radio_5.grid(row=7, column=0, padx=40, pady=5, sticky="w")
+        self.radio_4 = ctk.CTkRadioButton(self.main_frame, text="All Time", variable=self.timeframe_var, value="4")
+        self.radio_4.grid(row=8, column=0, padx=40, pady=5, sticky="w")
         
         # Progress section
         self.progress_bar = ctk.CTkProgressBar(self.main_frame, width=500, corner_radius=10)
