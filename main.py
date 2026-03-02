@@ -418,6 +418,10 @@ class TaxReporter:
                     
                     for k, res in enumerate(batch_results):
                         idx = i + k
+                        # Only update if NOT already geofenced (marked by 'Geofence' in Notes or Class=Business already)
+                        if processed_drives[idx].get('Class') == 'Business' and 'Geofence' in processed_drives[idx].get('Notes', ''):
+                            continue
+                            
                         processed_drives[idx].update({
                             'Class': res.get('Class', 'Personal'),
                             'MissionCategory': res.get('MissionCategory', 'Personal'),
