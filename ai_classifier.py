@@ -18,7 +18,16 @@ class DriveClassifier:
         if os.path.exists(self.CACHE_FILE):
             try:
                 with open(self.CACHE_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Migration: Ensure all cached entries have a Reasoning field
+                    updated = False
+                    for key, val in data.items():
+                        if isinstance(val, dict) and 'Reasoning' not in val:
+                            val['Reasoning'] = "Classified via AI (legacy cache)"
+                            updated = True
+                    if updated:
+                        logger.info("Migrated legacy AI cache entries with default reasoning.")
+                    return data
             except Exception as e:
                 logger.error(f"Failed to load AI cache: {e}")
                 return {}
@@ -140,7 +149,7 @@ class DriveClassifier:
                     results_map[idx] = {"Class": "Personal", "Business purpose": "", "MissionCategory": "Personal", "Reasoning": f"Error: {e}", "Notes": ""}
                 break
 
-        return [results_map[idx] for idx, _, _, _ in sorted([(i, None, None, None) for i in results_map.keys()])]
+        return [results_map[i] for i in range(len(drives_batch))]
 
     def classify_drive(self, drive_data, rules_text, context=None):
         """Legacy single-drive classification wrapper."""

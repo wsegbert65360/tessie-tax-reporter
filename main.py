@@ -295,6 +295,7 @@ def process_business_logic(outings, rules_text):
                 m['Class'] = 'Business'
                 m['Business purpose'] = main_purpose
                 m['MissionCategory'] = main_cat
+                m['AuditReason'] = f"Incidental stop during {main_purpose} mission"
                 if "Incidental" not in m['Notes']: m['Notes'] = f"Incidental stop ({m['Notes']})".strip()
             else:
                 m['Class'] = 'Personal'
