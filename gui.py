@@ -5,6 +5,9 @@ from tkinter import messagebox
 from dotenv import load_dotenv
 from main import TaxReporter
 from tessie_api import TessieClient
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Dark mode theme
 ctk.set_appearance_mode("dark")
@@ -152,12 +155,19 @@ class TeslaTaxApp(ctk.CTk):
         self.generate_btn = ctk.CTkButton(self.main_frame, text="Generate Report", command=self.start_reporting, height=50, width=250, font=ctk.CTkFont(size=16, weight="bold"), corner_radius=25)
         self.generate_btn.grid(row=11, column=0, padx=30, pady=20, sticky="w")
         
-        self.view_btn = ctk.CTkButton(self.main_frame, text="View Last Report", command=self.view_last_report, height=40, width=200, font=ctk.CTkFont(size=14), corner_radius=20, fg_color="gray", state="disabled")
-        self.view_btn.grid(row=12, column=0, padx=30, pady=0, sticky="w")
+        self.btn_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.btn_frame.grid(row=12, column=0, padx=30, pady=0, sticky="w")
+
+        self.view_btn = ctk.CTkButton(self.btn_frame, text="View CSV", command=self.view_csv, height=40, width=150, font=ctk.CTkFont(size=14), corner_radius=20, fg_color="gray", state="disabled")
+        self.view_btn.grid(row=0, column=0, padx=(0, 10), pady=0)
+
+        self.view_pdf_btn = ctk.CTkButton(self.btn_frame, text="View PDF", command=self.view_pdf, height=40, width=150, font=ctk.CTkFont(size=14), corner_radius=20, fg_color="gray", state="disabled")
+        self.view_pdf_btn.grid(row=0, column=1, padx=0, pady=0)
         
         # Data
         self.vehicles_data = []
-        self.last_report_path = None
+        self.last_csv_path = None
+        self.last_pdf_path = None
         self.fetch_vehicles()
 
     def get_vehicle_display_name(self, v):
@@ -255,21 +265,28 @@ class TeslaTaxApp(ctk.CTk):
                         messagebox.showinfo("Audit Shield Discovery", f"Automatically identified and saved {len(auto_saved)} locations:\n\n" + "\n".join(auto_saved[:10]) + ("\n..." if len(auto_saved) > 10 else ""))
                 
                 self.status_label.configure(text="Success: Report Generated")
-                self.last_report_path = result['tax_file']
+                self.last_csv_path = result['tax_file']
+                self.last_pdf_path = result['pdf_file']
                 self.view_btn.configure(state="normal", fg_color=["#3B8ED0", "#1F6AA5"]) 
-                
-                msg = f"Report Successfully Created!\n\nBusiness Miles: {result['total_biz']:.1f}\nBusiness Usage: {result['biz_pct']:.1f}%\n\nFiles:\n- {result['tax_file']}\n- {result['log_file']}"
+                self.view_pdf_btn.configure(state="normal", fg_color=["#2FA572", "#106A43"]) # Green for PDF
+
+                msg = f"Report Successfully Created!\n\nBusiness Miles: {result['total_biz']:.1f}\nBusiness Usage: {result['biz_pct']:.1f}%\n\nFiles:\n- {result['tax_file']}\n- {result['pdf_file']}"
                 messagebox.showinfo("Success", msg)
                 os.startfile('.')
             else:
+                logger.error(f"Reporter thread error: {result}")
                 self.status_label.configure(text="Error occurred")
                 messagebox.showerror("Execution Error", str(result))
         
         self.after(0, finish_gui)
 
-    def view_last_report(self):
-        if self.last_report_path and os.path.exists(self.last_report_path):
-            os.startfile(self.last_report_path)
+    def view_csv(self):
+        if self.last_csv_path and os.path.exists(self.last_csv_path):
+            os.startfile(self.last_csv_path)
+
+    def view_pdf(self):
+        if self.last_pdf_path and os.path.exists(self.last_pdf_path):
+            os.startfile(self.last_pdf_path)
 
     def open_rules(self):
         os.startfile('rules.txt')

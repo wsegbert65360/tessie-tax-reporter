@@ -3,6 +3,18 @@ import json
 import os
 import hashlib
 import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+import openai
+import json
+import os
+import hashlib
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DriveClassifier:
     CACHE_FILE = "classification_cache.json"
@@ -14,88 +26,84 @@ class DriveClassifier:
     def _load_cache(self):
         if os.path.exists(self.CACHE_FILE):
             try:
-                with open(self.CACHE_FILE, "r") as f:
+                with open(self.CACHE_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except:
+            except Exception as e:
+                logger.error(f"Failed to load AI cache: {e}")
                 return {}
         return {}
 
     def _save_cache(self):
         try:
-            with open(self.CACHE_FILE, "w") as f:
+            with open(self.CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, indent=4)
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to save AI cache: {e}")
 
-    def classify_drive(self, drive_data, rules_text, context=None):
-        """
-        Classifies a drive into Class (Business/Personal), Purpose, and Notes.
-        Uses cached results if available to stay within rate limits.
-        """
+    def _get_cache_key(self, drive_data, rules_text):
         end_loc = drive_data.get('End Location', 'Unknown')
         miles = drive_data.get('Miles', 0)
-        
-        # Create a cache key based on Address and Rules
         rules_hash = hashlib.md5(rules_text.encode()).hexdigest()
-        cache_key = f"{end_loc}_{miles}_{rules_hash}"
-        
-        if cache_key in self.cache:
-            return self.cache[cache_key]
+        return f"{end_loc}_{miles}_{rules_hash}"
 
-        context_str = ""
-        if context:
-            context_str = f"""
-            TRIP CONTEXT (MISSION CHAIN):
-            - Previous Destination: {context['Previous End Location']}
-            - Next Start Point: {context['Next Start Location']}
-            """
+    def classify_drives_batch(self, drives_batch, rules_text):
+        """
+        Classifies a batch of drives in a single request for efficiency.
+        """
+        results_map = {}
+        to_classify = []
+        
+        for i, (drive_data, context) in enumerate(drives_batch):
+            cache_key = self._get_cache_key(drive_data, rules_text)
+            if cache_key in self.cache:
+                results_map[i] = self.cache[cache_key]
+            else:
+                to_classify.append((i, drive_data, context, cache_key))
+
+        if not to_classify:
+            return [results_map[i] for i in range(len(drives_batch))]
+
+        # Construct batch prompt
+        drives_list_str = ""
+        for i, drive_data, context, _ in to_classify:
+            ctx_str = f" [Context: Prev Dest: {context['Previous End Location']}, Next Start: {context['Next Start Location']}]" if context else ""
+            drives_list_str += f"- ID {i}: {drive_data.get('Date')} | From: {drive_data.get('Start Location')} | To: {drive_data.get('End Location')} | Miles: {drive_data.get('Miles')} | Pre-Identified: {drive_data.get('InferredName', 'None')}{ctx_str}\n"
 
         prompt = f"""
         You are a specialized tax classification assistant for a farming business.
-        Every classification must be OBJECTIVE and defensible for an IRS audit.
+        Classify the following drives into 'Business' or 'Personal' for an IRS audit.
 
         USER RULES & POIs:
         \"\"\"
         {rules_text}
         \"\"\"
-        (Note: Rules use 'Type | Name | Address' or legacy format. 'F' is Farm, 'P' is Personal, 'HQ' is HeadQuarters).
 
-        {context_str}
+        DRIVES TO CLASSIFY:
+        {drives_list_str}
 
-        DRIVE TO CLASSIFY:
-        Date: {drive_data.get('Date')}
-        Start Location: {drive_data.get('Start Location')}
-        End Location: {end_loc}
-        Pre-Identified Business: {drive_data.get('InferredName', 'None')}
-        Miles: {drive_data.get('Miles')}
+        CLASSIFICATION RULES:
+        1. "Class": "Business" or "Personal".
+        2. "MissionCategory": [Supply Run, Field Check, Livestock Care, Equipment Repair, Crop Inspection, Operational Support, Financial/Admin] or "Personal".
+        3. "Business purpose": REQUIRED IF BUSINESS (3-7 words, Verb + Asset + Why). Use objective verbs: "Purchase", "Transport", "Inspect", "Verify".
+        4. "InferredName": The specific business name.
+        5. "Notes": Objective audit notes.
 
-        CLASSIFICATION INSTRUCTIONS (AUDIT HARDENING):
-        1. "Class": MUST be "Business" or "Personal".
-        2. "InferredName": Use the SPECIFIC business name found (either from the Pre-Identified field or your own inference).
-        3. "MissionCategory": MUST be one of: [Supply Run, Field Check, Livestock Care, Equipment Repair, Crop Inspection, Operational Support, Financial/Admin].
-        4. "Business purpose": REQUIRED IF BUSINESS. 3-7 words. Pattern: **Verb + Asset + Specific Why**.
-           - **STRICT ACTION**: NO fluffy or subjective verbs like "Reviewing", "Considering", "Thinking". Use objective verbs: "Inspect", "Repair", "Verify", "Purchase", "Transport".
-           - *Examples*: "Inspect south pasture fence line", "Purchase diesel for tractor servicing", "Verify sprayer tip flow rate", "Check moisture in bin four".
-           - **BANNED WORDS**: Routine, General, Normal, Check-in, Work, Farm business, Misc, Average, Typical.
-        5. "Notes": Objectively mention businesses or entities seen at the destination address.
+        AUDIT HARDENING:
+        - Retail trips (Sonic, McDonalds, Dollar Store, Gas Stations) DEFAULT to Personal unless the pre-identified name or context strongly suggests a farm supply run (e.g. Orscheln, TSC).
+        - HQ/Home returns are typically Personal unless the outbound leg was a mission and this completes the loop.
+        - Distance matters: Short incidental stops during a larger farm mission can be Business.
 
-        RETAIL SAFETY & CONFLICT RULES:
-        - **RETAIL SKEPTICISM**: If destination is a Restaurant (Sonic, McD), Dollar Store, Gas Station, Doctor, or Church, DEFAULT to "Personal" UNLESS context proves a farm supply run.
-        - **CONFLICT PREVENTION**: NEVER label a trip "Business" if your notes say "No farm purpose" or "Personal stop only".
-        - **0-MILE TRIPS**: Classify as "Personal".
-
-        Respond in JSON format:
+        Return a JSON object with a "results" key containing an object mapping the "ID" strings to their classification objects.
         {{
-            "Class": "Business" or "Personal",
-            "InferredName": "Estimated Name of Business/POI",
-            "MissionCategory": "Category",
-            "Business purpose": "3-7 words (Pick up fuel, Inspect cattle, etc)",
-            "Notes": "Objective details"
+            "results": {{
+                "0": {{ "Class": "Business", "InferredName": "...", "MissionCategory": "...", "Business purpose": "...", "Notes": "..." }},
+                ...
+            }}
         }}
         """
 
-        max_retries = 5
-        retry_delay = 10 
+        max_retries = 3
+        retry_delay = 10
 
         for attempt in range(max_retries):
             try:
@@ -108,16 +116,30 @@ class DriveClassifier:
                     response_format={ "type": "json_object" }
                 )
                 
-                res = json.loads(response.choices[0].message.content)
-                self.cache[cache_key] = res
+                batch_res = json.loads(response.choices[0].message.content).get("results", {})
+                
+                for i_str, res in batch_res.items():
+                    idx = int(i_str)
+                    cache_key = next(item[3] for item in to_classify if item[0] == idx)
+                    self.cache[cache_key] = res
+                    results_map[idx] = res
+                
                 self._save_cache()
-                return res
+                break
             except Exception as e:
+                logger.error(f"Batch AI Classification error: {e}")
                 if "429" in str(e) and attempt < max_retries - 1:
-                    print(f"Rate limit hit. Retrying in {retry_delay}s...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
-                
-                print(f"AI Classification error: {e}")
-                return {"Class": "Personal", "Business purpose": "", "MissionCategory": "Personal", "Notes": f"Error: {e}"}
+                # If it failed completely, fill to_classify indices with failure defaults
+                for idx, _, _, _ in to_classify:
+                    results_map[idx] = {"Class": "Personal", "Business purpose": "", "MissionCategory": "Personal", "Notes": f"Error: {e}"}
+                break
+
+        return [results_map[i] for i in range(len(drives_batch))]
+
+    def classify_drive(self, drive_data, rules_text, context=None):
+        """Legacy single-drive classification wrapper."""
+        results = self.classify_drives_batch([(drive_data, context)], rules_text)
+        return results[0]

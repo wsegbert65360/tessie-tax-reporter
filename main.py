@@ -10,6 +10,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tessie_api import TessieClient
 import math
 from place_lookup import lookup_business_at_coords
+import logging
+from fpdf import FPDF
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("debug.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def haversine(lat1, lon1, lat2, lon2):
     """Calculates the distance in feet between two GPS points."""
@@ -307,6 +320,12 @@ class TaxReporter:
                 self.rules_text = ""
 
     def run(self, report_choice, start_ts=None, end_ts=None, custom_vin=None):
+        if not self.api_token:
+            logger.error("TESSIE_API_KEY is missing. Please check your .env file.")
+            return "Error: TESSIE_API_KEY is missing."
+        if not self.openai_key:
+            logger.warning("OPENAI_API_KEY is missing. AI classification will be disabled.")
+
         try:
             vehicles = self.client.get_vehicles()
             if not vehicles: return "No vehicles found."
@@ -343,7 +362,7 @@ class TaxReporter:
                 if not poi_name and end_lat and end_lon:
                     inferred = lookup_business_at_coords(end_lat, end_lon, self.google_key)
                     if inferred:
-                        print(f"[AUTO DISCOVERY] Identified: {inferred} at {d.get('ending_location')[:30]}...")
+                        logger.info(f"[AUTO DISCOVERY] Identified: {inferred} at {d.get('ending_location')[:30]}...")
 
                 processed_drives.append({
                     'Date': start_dt.strftime('%Y-%m-%d'),
@@ -362,16 +381,33 @@ class TaxReporter:
             processed_drives.sort(key=lambda x: x['Started At'])
 
             if self.classifier:
-                def run_ai(idx, d, prev=None, nxt=None):
-                    ctx = {'Previous End Location': prev['End Location'] if prev else 'None', 'Next Start Location': nxt['Start Location'] if nxt else 'None'}
-                    res = self.classifier.classify_drive(d, self.rules_text, context=ctx)
-                    d.update({'Class': res.get('Class', 'Personal'), 'MissionCategory': res.get('MissionCategory', 'Personal'), 'Business purpose': res.get('Business purpose', ''), 'InferredName': res.get('InferredName', ''), 'Notes': res.get('Notes', '')})
-                    return idx, d
-
-                with ThreadPoolExecutor(max_workers=1) as ex:
-                    futures = [ex.submit(run_ai, i, processed_drives[i], processed_drives[i-1] if i > 0 else None, processed_drives[i+1] if i < len(processed_drives)-1 else None) for i in range(len(processed_drives))]
-                    for i, f in enumerate(as_completed(futures)):
-                        if self.progress_callback: self.progress_callback((i+1)/len(processed_drives))
+                batch_size = 10
+                for i in range(0, len(processed_drives), batch_size):
+                    batch = []
+                    for j in range(i, min(i + batch_size, len(processed_drives))):
+                        drive = processed_drives[j]
+                        prev = processed_drives[j-1] if j > 0 else None
+                        nxt = processed_drives[j+1] if j < len(processed_drives)-1 else None
+                        ctx = {
+                            'Previous End Location': prev['End Location'] if prev else 'None',
+                            'Next Start Location': nxt['Start Location'] if nxt else 'None'
+                        }
+                        batch.append((drive, ctx))
+                    
+                    batch_results = self.classifier.classify_drives_batch(batch, self.rules_text)
+                    
+                    for k, res in enumerate(batch_results):
+                        idx = i + k
+                        processed_drives[idx].update({
+                            'Class': res.get('Class', 'Personal'),
+                            'MissionCategory': res.get('MissionCategory', 'Personal'),
+                            'Business purpose': res.get('Business purpose', ''),
+                            'InferredName': res.get('InferredName', ''),
+                            'Notes': res.get('Notes', '')
+                        })
+                    
+                    if self.progress_callback:
+                        self.progress_callback(min(1.0, (i + batch_size) / len(processed_drives)))
 
             self.discovered_locations = [
                 {
@@ -430,6 +466,71 @@ class TaxReporter:
                     biz_pct = (total_biz / total_period_miles * 100) if total_period_miles > 0 else 0
                     writer.writerow(["Business Percentage", f"{round(biz_pct, 1)}%"])
             
-            return {'tax_file': tax_file, 'log_file': log_file, 'total_biz': total_biz, 'biz_pct': (total_biz/(total_biz+total_pers))*100 if (total_biz+total_pers)>0 else 0}
+            return {
+                'tax_file': tax_file, 
+                'pdf_file': pdf_file,
+                'log_file': log_file, 
+                'total_biz': total_biz, 
+                'biz_pct': (total_biz/(total_biz+total_pers))*100 if (total_biz+total_pers)>0 else 0
+            }
         except Exception as e:
+            logger.error(f"Error in TaxReporter.run: {e}")
             return str(e)
+
+    def export_to_pdf(self, filename, vin, drives, outings, total_biz, total_pers, start_odo, end_odo):
+        """Generates a professional tax summary PDF."""
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 16)
+        pdf.cell(0, 10, "Tesla Tax Reporter - IRS Audit Summary", ln=True, align="C")
+        pdf.set_font("helvetica", "", 10)
+        pdf.cell(0, 10, f"Vehicle VIN: {vin}", ln=True, align="C")
+        pdf.cell(0, 5, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True, align="C")
+        pdf.ln(10)
+
+        # Totals Section
+        pdf.set_font("helvetica", "B", 12)
+        pdf.cell(0, 10, "Mileage Summary", ln=True)
+        pdf.set_font("helvetica", "", 11)
+        
+        total_period = round(end_odo - start_odo, 1) if end_odo > start_odo else 0
+        biz_pct = (total_biz / total_period * 100) if total_period > 0 else 0
+
+        data = [
+            ["Business Miles", f"{round(total_biz, 1)}"],
+            ["Personal Miles", f"{round(total_pers, 1)}"],
+            ["Total Odometer Miles", f"{total_period}"],
+            ["Business Percentage", f"{round(biz_pct, 1)}%"]
+        ]
+
+        for row in data:
+            pdf.cell(80, 8, row[0], border=1)
+            pdf.cell(40, 8, row[1], border=1, ln=True)
+
+        pdf.ln(10)
+
+        # Missions Section
+        pdf.set_font("helvetica", "B", 12)
+        pdf.cell(0, 10, "Business Missions Details", ln=True)
+        pdf.set_font("helvetica", "B", 10)
+        
+        # Table Header
+        headers = ["Date", "Mission Purpose", "Miles", "Destinations"]
+        ws = [25, 60, 15, 90]
+        for i, h in enumerate(headers):
+            pdf.cell(ws[i], 8, h, border=1)
+        pdf.ln()
+
+        pdf.set_font("helvetica", "", 9)
+        for mission in outings:
+            if mission[0]['Class'] == 'Business':
+                m_miles = sum(l['Miles'] for l in mission)
+                purpose = mission[0]['Business purpose'] or "Farm Business"
+                visited = ", ".join([get_poi_name(l['End Location'], self.rules_text, l.get('End Lat'), l.get('End Lon')) or l['End Location'] for l in mission])
+                
+                pdf.cell(ws[0], 8, mission[0]['Date'], border=1)
+                pdf.cell(ws[1], 8, purpose[:35], border=1)
+                pdf.cell(ws[2], 8, str(round(m_miles, 1)), border=1)
+                pdf.multi_cell(ws[3], 8, visited[:150], border=1)
+        
+        pdf.output(filename)
