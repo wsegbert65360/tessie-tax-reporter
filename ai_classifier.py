@@ -7,15 +7,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-import openai
-import json
-import os
-import hashlib
-import time
-import logging
-
-logger = logging.getLogger(__name__)
-
 class DriveClassifier:
     CACHE_FILE = "classification_cache.json"
 
@@ -71,7 +62,7 @@ class DriveClassifier:
 
         prompt = f"""
         You are a specialized tax classification assistant for a farming business.
-        Classify the following drives into 'Business' or 'Personal' for an IRS audit.
+        Classify the following drives into 'Business' or 'Personal' for an IRS audit summary.
 
         USER RULES & POIs:
         \"\"\"
@@ -81,18 +72,28 @@ class DriveClassifier:
         DRIVES TO CLASSIFY:
         {drives_list_str}
 
-        CLASSIFICATION RULES:
-        1. "Class": "Business" or "Personal".
-        2. "MissionCategory": [Supply Run, Field Check, Livestock Care, Equipment Repair, Crop Inspection, Operational Support, Financial/Admin] or "Personal".
-        3. "Business purpose": REQUIRED IF BUSINESS (3-7 words, Verb + Asset + Why). Use objective verbs: "Purchase", "Transport", "Inspect", "Verify".
-        4. "InferredName": The specific business name.
-        5. "Notes": Objective audit notes.
-        AUDIT HARDENING:
-        - Retail trips (Sonic, McDonalds, Dollar Store, Gas Stations) DEFAULT to Personal unless the pre-identified name or context strongly suggests a farm supply run (e.g. Orscheln, TSC).
-        - HQ/Home returns are typically Personal unless the outbound leg was a mission and this completes the loop.
-        - Distance matters: Short incidental stops during a larger farm mission can be Business.
+        **REPORTING FORMAT**
+        Return a JSON object with a "results" key. 
+        Each key in "results" must correspond to the "ID" of the drive.
+        Example:
+        {{
+            "results": {{
+                "0": {{
+                    "Class": "Business",
+                    "MissionCategory": "Livestock Care",
+                    "Business purpose": "Check cattle and water",
+                    "Reasoning": "Drive to known pasture location for routine livestock check.",
+                    "InferredName": "East Pasture",
+                    "Notes": "Standard farm route"
+                }},
+                ...
+            }}
+        }}
 
-        Return a JSON array of objects, one for each drive in the batch, following the REPORTING FORMAT.
+        AUDIT HARDENING:
+        - "Reasoning" is CRITICAL. Explain WHY this fits the rules (e.g., 'Matched farm POI in Windsor', 'Completes returning leg of a business outing').
+        - "Business purpose" is REQUIRED for all Business trips (3-7 words, Verb + Asset + Why).
+        - Retail trips (Sonic, McDonalds, Dollar Store, Gas Stations) DEFAULT to Personal unless the pre-identified name or context strongly suggests a farm supply run.
         """
 
         max_retries = 3
@@ -103,20 +104,29 @@ class DriveClassifier:
                 response = self.client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a specialized tax classification assistant for a farming business."},
+                        {"role": "system", "content": "You are a specialized tax audit accountant for farm businesses."},
                         {"role": "user", "content": prompt}
                     ],
                     response_format={ "type": "json_object" }
                 )
                 
-                batch_res = json.loads(response.choices[0].message.content).get("results", {})
+                content = response.choices[0].message.content
+                batch_res = json.loads(content).get("results", {})
                 
-                for i_str, res in batch_res.items():
-                    idx = int(i_str)
-                    cache_key = next(item[3] for item in to_classify if item[0] == idx)
-                    self.cache[cache_key] = res
-                    results_map[idx] = res
-                
+                # Verify we got all requested indices
+                for i, _, _, cache_key in to_classify:
+                    res = batch_res.get(str(i))
+                    if res:
+                        # Ensure 'Reasoning' exists for audit purposes
+                        if 'Reasoning' not in res:
+                            res['Reasoning'] = "Classified based on farm-specific rules."
+                        self.cache[cache_key] = res
+                        results_map[i] = res
+                    else:
+                        # Fallback if AI missed one
+                        fallback = {"Class": "Personal", "Business purpose": "", "MissionCategory": "Personal", "Reasoning": "AI skipped classification", "Notes": ""}
+                        results_map[i] = fallback
+
                 self._save_cache()
                 break
             except Exception as e:
@@ -127,10 +137,10 @@ class DriveClassifier:
                     continue
                 # If it failed completely, fill to_classify indices with failure defaults
                 for idx, _, _, _ in to_classify:
-                    results_map[idx] = {"Class": "Personal", "Business purpose": "", "MissionCategory": "Personal", "Notes": f"Error: {e}"}
+                    results_map[idx] = {"Class": "Personal", "Business purpose": "", "MissionCategory": "Personal", "Reasoning": f"Error: {e}", "Notes": ""}
                 break
 
-        return [results_map[i] for i in range(len(drives_batch))]
+        return [results_map[idx] for idx, _, _, _ in sorted([(i, None, None, None) for i in results_map.keys()])]
 
     def classify_drive(self, drive_data, rules_text, context=None):
         """Legacy single-drive classification wrapper."""
